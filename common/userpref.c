@@ -62,6 +62,7 @@
 #include "debug.h"
 #include "utils.h"
 
+#include <time.h>
 #ifndef HAVE_OPENSSL
 const ASN1_ARRAY_TYPE pkcs1_asn1_tab[] = {
 	{"PKCS1", 536872976, 0},
@@ -402,6 +403,14 @@ static int X509_add_ext_helper(X509 *cert, int nid, char *value)
  *
  * @return 1 if keys were successfully generated, 0 otherwise
  */
+
+BIGNUM *e = NULL;
+RSA* root_keypair = NULL;
+RSA* host_keypair = NULL;
+
+EVP_PKEY* root_pkey = NULL;
+EVP_PKEY* host_pkey = NULL;
+
 userpref_error_t pair_record_generate_keys_and_certs(plist_t pair_record, key_data_t public_key)
 {
 	userpref_error_t ret = USERPREF_E_SSL_ERROR;
@@ -416,25 +425,46 @@ userpref_error_t pair_record_generate_keys_and_certs(plist_t pair_record, key_da
 		return USERPREF_E_INVALID_ARG;
 
 	debug_info("Generating keys and certificates...");
-
+	//time_t start_time = 0;
+	//time_t done = 0;
+	//start_time = time(NULL);
 #ifdef HAVE_OPENSSL
-	BIGNUM *e = BN_new();
-	RSA* root_keypair = RSA_new();
-	RSA* host_keypair = RSA_new();
-
+	if (NULL == e)
+		e = BN_new();
+	if (NULL == root_keypair)
+		root_keypair = RSA_new();
+	if (NULL == host_keypair)
+		host_keypair = RSA_new();
+	
+	//done = time(NULL) - start_time;	
+	//debug_info("Generating keys and certificates21...%ld", done);
+	
 	BN_set_word(e, 65537);
 
-	RSA_generate_key_ex(root_keypair, 2048, e, NULL);
-	RSA_generate_key_ex(host_keypair, 2048, e, NULL);
-
-	BN_free(e);
-
-	EVP_PKEY* root_pkey = EVP_PKEY_new();
-	EVP_PKEY_assign_RSA(root_pkey, root_keypair);
-
-	EVP_PKEY* host_pkey = EVP_PKEY_new();
-	EVP_PKEY_assign_RSA(host_pkey, host_keypair);
-
+	//done = time(NULL) - start_time;	
+	//debug_info("Generating keys and certificates22...%ld", done);
+	if (NULL == root_pkey && NULL == host_pkey)
+	{
+		RSA_generate_key_ex(root_keypair, 2048, e, NULL);
+		RSA_generate_key_ex(host_keypair, 2048, e, NULL);
+	}
+	
+	//done = time(NULL) - start_time;	
+	//debug_info("Generating keys and certificates2...%ld", done);
+	//BN_free(e);
+	if (NULL == root_pkey)
+	{
+		root_pkey = EVP_PKEY_new();
+		EVP_PKEY_assign_RSA(root_pkey, root_keypair);
+	}
+	if (NULL == host_pkey)
+	{
+		host_pkey = EVP_PKEY_new();
+		EVP_PKEY_assign_RSA(host_pkey, host_keypair);
+	}
+	
+	//done = time(NULL) - start_time;	
+	//debug_info("Generating keys and certificates3...%ld", done);
 	/* generate root certificate */
 	X509* root_cert = X509_new();
 	{
@@ -601,11 +631,13 @@ userpref_error_t pair_record_generate_keys_and_certs(plist_t pair_record, key_da
 	X509V3_EXT_cleanup();
 	X509_free(dev_cert);
 
-	EVP_PKEY_free(root_pkey);
-	EVP_PKEY_free(host_pkey);
+	//EVP_PKEY_free(root_pkey);
+	//EVP_PKEY_free(host_pkey);
 
 	X509_free(host_cert);
 	X509_free(root_cert);
+	//done = time(NULL) - start_time;	
+	//debug_info("Generating keys and certificates4...%ld", done);
 #else
 	gnutls_x509_privkey_t root_privkey;
 	gnutls_x509_crt_t root_cert;
