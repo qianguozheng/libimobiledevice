@@ -28,6 +28,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
@@ -404,10 +405,38 @@ static int X509_add_ext_helper(X509 *cert, int nid, char *value)
  * @return 1 if keys were successfully generated, 0 otherwise
  */
 
-BIGNUM *e = NULL;
-RSA* root_keypair = NULL;
-RSA* host_keypair = NULL;
-
+#define ROOT_KEYPAIR	"/etc/root_keypair.key"
+#define HOST_KEYPAIR	"/etc/host_keypair.key"
+static int keypair_exist()
+{
+	if (0 == access(ROOT_KEYPAIR, R_OK) && 0 == access(HOST_KEYPAIR, R_OK))
+	{
+		return 1;
+	}
+	return 0;
+}
+static int writeRSAPrivateKey(const char *filename, RSA *rsa)
+{
+	FILE *fp = NULL;
+	if ((fp = fopen(filename, "wb")) == NULL)
+	{
+		return -1;
+	}
+	
+	PEM_write_RSAPrivateKey(fp, rsa, NULL, NULL, 0, NULL, NULL);
+    
+	fclose(fp);
+	return 0;
+}
+static RSA *readRSAPrivateKey(const char *filename)
+{
+	FILE *fp = NULL;
+	if ((fp = fopen(filename, "r")) == NULL)
+	{
+		return NULL;
+	}
+	return PEM_read_RSAPrivateKey(fp, NULL, NULL, NULL);
+}
 EVP_PKEY* root_pkey = NULL;
 EVP_PKEY* host_pkey = NULL;
 
@@ -425,33 +454,56 @@ userpref_error_t pair_record_generate_keys_and_certs(plist_t pair_record, key_da
 		return USERPREF_E_INVALID_ARG;
 
 	debug_info("Generating keys and certificates...");
-	//time_t start_time = 0;
-	//time_t done = 0;
-	//start_time = time(NULL);
+	time_t start_time = 0;
+	time_t done = 0;
+	start_time = time(NULL);
 #ifdef HAVE_OPENSSL
-	if (NULL == e)
-		e = BN_new();
-	if (NULL == root_keypair)
-		root_keypair = RSA_new();
-	if (NULL == host_keypair)
-		host_keypair = RSA_new();
-	
-	//done = time(NULL) - start_time;	
-	//debug_info("Generating keys and certificates21...%ld", done);
-	
-	BN_set_word(e, 65537);
 
-	//done = time(NULL) - start_time;	
-	//debug_info("Generating keys and certificates22...%ld", done);
-	if (NULL == root_pkey && NULL == host_pkey)
+	RSA* root_keypair = NULL;
+	RSA* host_keypair = NULL;
+	
+	root_keypair = RSA_new();
+	host_keypair = RSA_new();
+	if (!keypair_exist())
+REGENERATE:
 	{
-		RSA_generate_key_ex(root_keypair, 2048, e, NULL);
-		RSA_generate_key_ex(host_keypair, 2048, e, NULL);
+		BIGNUM *e = NULL;
+
+		e = BN_new();		
+		
+		done = time(NULL) - start_time;	
+		debug_info("Generating keys and certificates21...%ld", done);
+		
+		BN_set_word(e, 65537);
+
+		done = time(NULL) - start_time;	
+		debug_info("Generating keys and certificates22...%ld", done);
+		if (NULL == root_pkey && NULL == host_pkey)
+		{
+			RSA_generate_key_ex(root_keypair, 2048, e, NULL);
+			RSA_generate_key_ex(host_keypair, 2048, e, NULL);
+		}
+		
+		done = time(NULL) - start_time;	
+		debug_info("Generating keys and certificates2...%ld", done);
+		BN_free(e);
+		
+		writeRSAPrivateKey(ROOT_KEYPAIR, root_keypair);
+		writeRSAPrivateKey(HOST_KEYPAIR, host_keypair);
+		
+	}
+	else
+	{
+		done = time(NULL) - start_time;	
+		debug_info("Generating keys and certificates31...%ld", done);
+		root_keypair = readRSAPrivateKey(ROOT_KEYPAIR);
+		host_keypair = readRSAPrivateKey(HOST_KEYPAIR);
+		if (!root_keypair || ! host_keypair)
+		{
+			goto REGENERATE;
+		}
 	}
 	
-	//done = time(NULL) - start_time;	
-	//debug_info("Generating keys and certificates2...%ld", done);
-	//BN_free(e);
 	if (NULL == root_pkey)
 	{
 		root_pkey = EVP_PKEY_new();
